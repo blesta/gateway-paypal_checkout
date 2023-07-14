@@ -107,22 +107,24 @@ class PaypalCheckoutApi
         $url = $this->api_url[$this->environment] . '/' . ltrim($route ?? '', '/');
         $curl = curl_init();
 
-        switch (strtoupper($method)) {
-            case 'DELETE':
-                // Set data using get parameters
-            case 'GET':
-                $url .= empty($body) ? '' : '?' . http_build_query($body);
-                break;
-            case 'POST':
-                curl_setopt($curl, CURLOPT_POST, 1);
+        if (!empty($body)) {
+            switch (strtoupper($method)) {
+                case 'DELETE':
+                    // Set data using get parameters
+                case 'GET':
+                    $url .= empty($body) ? '' : '?' . http_build_query($body);
+                    break;
+                case 'POST':
+                    curl_setopt($curl, CURLOPT_POST, 1);
                 // Use the default behavior to set data fields
-            default:
-                if (in_array('Content-Type: application/x-www-form-urlencoded', $headers)) {
-                    curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($body));
-                } else {
-                    curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($body));
-                }
-                break;
+                default:
+                    if (in_array('Content-Type: application/x-www-form-urlencoded', $headers)) {
+                        curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($body));
+                    } else {
+                        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($body));
+                    }
+                    break;
+            }
         }
 
         curl_setopt($curl, CURLOPT_CUSTOMREQUEST, strtoupper($method));

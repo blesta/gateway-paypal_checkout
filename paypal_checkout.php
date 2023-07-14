@@ -264,20 +264,32 @@ class PaypalCheckout extends NonmerchantGateway
         $payload = file_get_contents('php://input');
         $webhook = json_decode($payload);
 
-        // Capture payment
-        if (($data->event_type ?? '') == 'CHECKOUT.ORDER.APPROVED') {
-            $orders = new PaypalCheckoutOrders($api);
-            $orders->capture(['id' => $webhook->resource->id]);
-
-            return;
-        }
-
-        // Discard all webhook events, except when the order is completed
-        if (($data->event_type ?? '') !== 'CHECKOUT.ORDER.COMPLETED') {
+        // Discard all webhook events, except when the order is completed or approved
+        $events = ['CHECKOUT.ORDER.COMPLETED', 'CHECKOUT.ORDER.APPROVED'];
+        if (!in_array($webhook->event_type ?? '', $events)) {
             return;
         }
 
         $this->log('validate', json_encode($webhook), 'input', !empty($webhook));
+
+        // Capture payment
+        if ($webhook->event_type == 'CHECKOUT.ORDER.APPROVED') {
+            $orders = new PaypalCheckoutOrders($api);
+            $orders->capture(['id' => $webhook->resource->id]);
+
+            $this->log('validate', json_encode($orders), 'output', !empty($orders));
+
+            return [
+                'client_id' => $webhook->resource->purchase_units[0]->custom_id ?? null,
+                'amount' => $webhook->resource->purchase_units[0]->amount->value ?? null,
+                'currency' => $webhook->resource->purchase_units[0]->amount->currency_code ?? null,
+                'invoices' => $this->unserializeInvoices($webhook->resource->purchase_units[0]->reference_id ?? ''),
+                'status' => 'pending',
+                'reference_id' => null,
+                'transaction_id' => $webhook->resource->id ?? null,
+                'parent_transaction_id' => null
+            ];
+        }
 
         // Set the transaction
         $transaction = $webhook->resource->purchase_units[0] ?? (object) [];
