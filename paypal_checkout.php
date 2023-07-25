@@ -264,42 +264,61 @@ class PaypalCheckout extends NonmerchantGateway
         $payload = file_get_contents('php://input');
         $webhook = json_decode($payload);
 
-        // Capture payment
-        if (($data->event_type ?? '') == 'CHECKOUT.ORDER.APPROVED') {
-            $orders = new PaypalCheckoutOrders($api);
-            $orders->capture(['id' => $webhook->resource->id]);
-
-            return;
-        }
-
-        // Discard all webhook events, except when the order is completed
-        if (($data->event_type ?? '') !== 'CHECKOUT.ORDER.COMPLETED') {
+        // Discard all webhook events, except when the order is completed or approved
+        $events = ['CHECKOUT.ORDER.APPROVED', 'PAYMENT.CAPTURE.COMPLETED'];
+        if (!in_array($webhook->event_type ?? '', $events)) {
             return;
         }
 
         $this->log('validate', json_encode($webhook), 'input', !empty($webhook));
 
-        // Set the transaction
-        $transaction = $webhook->resource->purchase_units[0] ?? (object) [];
+        // Capture payment
+        if ($webhook->event_type == 'CHECKOUT.ORDER.APPROVED') {
+            $orders = new PaypalCheckoutOrders($api);
+            $response = $orders->capture(['id' => $webhook->resource->id]);
 
-        // Set payment id
-        $payment_id = (object) [];
-        if (!empty($webhook->resource)) {
-            $payment_id = $transaction->payments->captures[0]->id ?? null;
+            $this->log('capture', json_encode($response->response()), 'output', empty($response->errors()));
+
+            // Output errors
+            if (($errors = $response->errors())) {
+                $this->Input->setErrors($errors);
+
+                return;
+            }
+
+            return [
+                'client_id' => $webhook->resource->purchase_units[0]->custom_id ?? null,
+                'amount' => $webhook->resource->purchase_units[0]->amount->value ?? null,
+                'currency' => $webhook->resource->purchase_units[0]->amount->currency_code ?? null,
+                'invoices' => $this->unserializeInvoices($webhook->resource->purchase_units[0]->reference_id ?? ''),
+                'status' => 'pending',
+                'reference_id' => null,
+                'transaction_id' => $webhook->resource->id ?? null,
+                'parent_transaction_id' => null
+            ];
         }
 
-        // Fetch the payment
-        if (!is_null($payment_id)) {
-            $payment = $payments->get(['id' => $payment_id]);
-            $response = $payment->response();
+        // Set the payment
+        $payment = $webhook->resource ?? (object) [];
+
+        // Fetch the transaction
+        $transaction = (object) [];
+        if (isset($payment->supplementary_data->related_ids->order_id)) {
+            $orders = new PaypalCheckoutOrders($api);
+            $response = $orders->get(['id' => $payment->supplementary_data->related_ids->order_id]);
+            $transaction = $response->response()->purchase_units[0] ?? (object) [];
         }
 
-        $this->log('validate', json_encode($response), 'output', !empty($response));
+        $this->log('validate', json_encode($transaction), 'output', !empty($transaction));
+
+        if (empty($transaction)) {
+            return;
+        }
 
         // Set status
         $status = 'error';
         $success = false;
-        switch ($response->status ?? 'ERROR') {
+        switch ($payment->status ?? 'ERROR') {
             case 'COMPLETED':
                 $status = 'approved';
                 $success = true;
@@ -319,7 +338,7 @@ class PaypalCheckout extends NonmerchantGateway
         }
 
         // Output errors
-        if (($errors = $payment->errors())) {
+        if (($errors = $response->errors())) {
             $this->Input->setErrors($errors);
 
             return;
@@ -327,12 +346,12 @@ class PaypalCheckout extends NonmerchantGateway
 
         return [
             'client_id' => $transaction->custom_id ?? null,
-            'amount' => $payment->amount->total ?? null,
-            'currency' => $payment->amount->currency ?? null,
+            'amount' => $payment->amount->value ?? null,
+            'currency' => $payment->amount->currency_code ?? null,
             'invoices' => $this->unserializeInvoices($transaction->reference_id ?? ''),
             'status' => $status,
-            'reference_id' => $payment_id ?? null,
-            'transaction_id' => $webhook->resource->id ?? null,
+            'reference_id' => $payment->id ?? null,
+            'transaction_id' => $transaction->id ?? null,
             'parent_transaction_id' => null
         ];
     }
