@@ -275,9 +275,16 @@ class PaypalCheckout extends NonmerchantGateway
         // Capture payment
         if ($webhook->event_type == 'CHECKOUT.ORDER.APPROVED') {
             $orders = new PaypalCheckoutOrders($api);
-            $orders->capture(['id' => $webhook->resource->id]);
+            $response = $orders->capture(['id' => $webhook->resource->id]);
 
-            $this->log('validate', json_encode($orders), 'output', !empty($orders));
+            $this->log('capture', json_encode($response->response()), 'output', empty($response->errors()));
+
+            // Output errors
+            if (($errors = $response->errors())) {
+                $this->Input->setErrors($errors);
+
+                return;
+            }
 
             return [
                 'client_id' => $webhook->resource->purchase_units[0]->custom_id ?? null,
@@ -331,7 +338,7 @@ class PaypalCheckout extends NonmerchantGateway
         }
 
         // Output errors
-        if (($errors = $transaction->errors())) {
+        if (($errors = $response->errors())) {
             $this->Input->setErrors($errors);
 
             return;

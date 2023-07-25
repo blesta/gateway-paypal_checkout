@@ -35,13 +35,9 @@ class PaypalCheckoutResponse
 
         // Set errors
         $this->errors =  [];
-        if (isset($this->response->errors)) {
-            foreach ($this->response->errors as $error) {
-                $this->errors[] = $error->msg;
-            }
-        } elseif (isset($this->response->error)) {
+        if (!preg_match('/20[0-9]/', $this->status)) {
             $this->errors = [
-                $this->response->error => $this->response->error_description ?? $this->response->error
+                $this->response->name => $this->response->message ?? 'An unknown error occured'
             ];
         }
     }
