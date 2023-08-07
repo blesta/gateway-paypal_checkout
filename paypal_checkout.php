@@ -74,6 +74,15 @@ class PaypalCheckout extends NonmerchantGateway
      */
     public function editSettings(array $meta)
     {
+        // Set unset checkboxes
+        $checkbox_fields = ['sandbox'];
+        foreach ($checkbox_fields as $checkbox_field) {
+            if (!isset($meta[$checkbox_field])) {
+                $meta[$checkbox_field] = 'false';
+            }
+        }
+
+        // Set rules
         $rules = [
             'client_id' => [
                 'valid' => [
@@ -90,14 +99,6 @@ class PaypalCheckout extends NonmerchantGateway
             ]
         ];
         $this->Input->setRules($rules);
-
-        // Set unset checkboxes
-        $checkbox_fields = ['sandbox'];
-        foreach ($checkbox_fields as $checkbox_field) {
-            if (!isset($meta[$checkbox_field])) {
-                $meta[$checkbox_field] = 'false';
-            }
-        }
 
         // Validate the given meta data to ensure it meets the requirements
         $this->Input->validates($meta);
@@ -570,26 +571,32 @@ class PaypalCheckout extends NonmerchantGateway
      */
     public function validateConnection($client_id, $client_secret, $sandbox = 'false')
     {
-        // Initialize API
-        $api = $this->getApi($client_id, $client_secret, $sandbox);
-        $orders = new PaypalCheckoutOrders($api);
+        try {
+            // Initialize API
+            $api = $this->getApi($client_id, $client_secret, $sandbox);
+            $orders = new PaypalCheckoutOrders($api);
 
-        $params = [
-            'purchase_units' => [
-                [
-                    'description' => 'Blesta',
-                    'soft_descriptor' => 'Blesta',
-                    'amount' => [
-                        'currency_code' => 'USD',
-                        'value' => '0.99'
+            $params = [
+                'purchase_units' => [
+                    [
+                        'description' => 'Blesta',
+                        'soft_descriptor' => 'Blesta',
+                        'amount' => [
+                            'currency_code' => 'USD',
+                            'value' => '0.99'
+                        ]
                     ]
-                ]
-            ],
-            'intent' => 'AUTHORIZE'
-        ];
-        $order = $orders->create($params);
-        $response = $order->response();
+                ],
+                'intent' => 'AUTHORIZE'
+            ];
+            $order = $orders->create($params);
+            $response = $order->response();
 
-        return !empty($response->links);
+            return !empty($response->links);
+        } catch (Throwable $e) {
+            $this->Input->setErrors(['create' => ['response' => $e->getMessage()]]);
+
+            return false;
+        }
     }
 }
