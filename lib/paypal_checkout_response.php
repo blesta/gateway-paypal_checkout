@@ -34,10 +34,11 @@ class PaypalCheckoutResponse
         }
 
         // Set errors
-        $this->errors =  [];
+        $this->errors = [];
         if (!preg_match('/20[0-9]/', $this->status)) {
+            $error_key = $this->response->name ?? 'internal';
             $this->errors = [
-                $this->response->name => $this->response->message ?? 'An unknown error occured'
+                $error_key => $this->response->message ?? 'An unknown error occurred'
             ];
         }
     }
