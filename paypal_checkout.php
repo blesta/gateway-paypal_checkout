@@ -427,27 +427,35 @@ class PaypalCheckout extends NonmerchantGateway
         $api = $this->getApi($this->meta['client_id'], $this->meta['client_secret'], $this->meta['sandbox']);
         $payments = new PaypalCheckoutPayments($api);
 
-        $this->log('refund', json_encode(compact('reference_id', 'transaction_id')), 'output', !empty($get));
+        $this->log('getpayment', json_encode(compact('reference_id', 'transaction_id')), 'input', !empty($get));
 
         // Fetch the payment
         $payment = $payments->get(['id' => $reference_id]);
-        $response = $payments->response();
+        $response = $payment->response();
+        $this->log('getpayment', json_encode($response), 'output', empty($payment->errors() ?? []));
 
         if (empty($response) || !isset($response->status)) {
+            $this->Input->setErrors($this->getCommonError('general'));
             return;
         }
 
         // Attempt a refund
         try {
-            $refund = $payments->refund(['capture_id' => $reference_id, 'amount' => $amount]);
+            $params = [
+                'capture_id' => $reference_id,
+                'amount' => (object)['value' => $amount, 'currency_code' => $response->amount->currency_code]
+            ];
+            $this->log('refund', json_encode($params), 'input', true);
+            $refund = $payments->refund($params);
             $this->log('refund', $refund->raw(), 'output', $refund->status() == '200');
         } catch (Throwable $e) {
+            $this->Input->setErrors(['internal' => ['internal' => $e->getMessage()]]);
             return;
         }
 
         // Output errors
         if (($errors = $refund->errors())) {
-            $this->Input->setErrors($errors);
+            $this->Input->setErrors(['internal' => $errors]);
 
             return;
         }
@@ -484,6 +492,7 @@ class PaypalCheckout extends NonmerchantGateway
         $response = $payments->response();
 
         if (empty($response) || !isset($response->status)) {
+            $this->Input->setErrors($this->getCommonError('general'));
             return;
         }
 
@@ -497,7 +506,7 @@ class PaypalCheckout extends NonmerchantGateway
 
         // Output errors
         if (($errors = $void->errors())) {
-            $this->Input->setErrors($errors);
+            $this->Input->setErrors(['internal' => $errors]);
 
             return;
         }
