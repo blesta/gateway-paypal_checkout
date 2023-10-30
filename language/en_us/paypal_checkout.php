@@ -10,6 +10,8 @@ $lang['PaypalCheckout.description'] = 'With a simple, single integration you can
 // Errors
 $lang['PaypalCheckout.!error.client_id.valid'] = 'Client ID invalid.';
 $lang['PaypalCheckout.!error.client_secret.valid'] = 'Client Secret invalid.';
+$lang['PaypalCheckout.!error.event.unsupported'] = 'Unsupported event type.';
+$lang['PaypalCheckout.!error.transaction.missing'] = 'No transaction found.';
 
 
 // Settings
