@@ -268,6 +268,9 @@ class PaypalCheckout extends NonmerchantGateway
         // Discard all webhook events, except when the order is completed or approved
         $events = ['CHECKOUT.ORDER.APPROVED', 'PAYMENT.CAPTURE.COMPLETED'];
         if (!in_array($webhook->event_type ?? '', $events)) {
+            $this->Input->setErrors([
+                'event' => ['unsupported' => Language::_('PaypalCheckout.!error.event.unsupported', true)]
+            ]);
             return;
         }
 
@@ -283,7 +286,6 @@ class PaypalCheckout extends NonmerchantGateway
             // Output errors
             if (($errors = $response->errors())) {
                 $this->Input->setErrors($errors);
-
                 return;
             }
 
@@ -303,16 +305,22 @@ class PaypalCheckout extends NonmerchantGateway
         $payment = $webhook->resource ?? (object) [];
 
         // Fetch the transaction
+        $order_response = (object) [];
+        $order = (object) [];
         $transaction = (object) [];
         if (isset($payment->supplementary_data->related_ids->order_id)) {
             $orders = new PaypalCheckoutOrders($api);
-            $response = $orders->get(['id' => $payment->supplementary_data->related_ids->order_id]);
-            $transaction = $response->response()->purchase_units[0] ?? (object) [];
+            $order_response = $orders->get(['id' => $payment->supplementary_data->related_ids->order_id]) ?? (object) [];
+            $order = $order_response->response();
+            $transaction = $order->purchase_units[0] ?? (object) [];
         }
 
         $this->log('validate', json_encode($transaction), 'output', !empty($transaction));
 
         if (empty($transaction)) {
+            $this->Input->setErrors([
+                'transaction' => ['missing' => Language::_('PaypalCheckout.!error.transaction.missing', true)]
+            ]);
             return;
         }
 
@@ -335,13 +343,13 @@ class PaypalCheckout extends NonmerchantGateway
         }
 
         if (!$success) {
+            $this->Input->setErrors($this->getCommonError('general'));
             return;
         }
 
         // Output errors
-        if (($errors = $response->errors())) {
+        if (($errors = $order_response->errors())) {
             $this->Input->setErrors($errors);
-
             return;
         }
 
@@ -352,7 +360,7 @@ class PaypalCheckout extends NonmerchantGateway
             'invoices' => $this->unserializeInvoices($transaction->reference_id ?? ''),
             'status' => $status,
             'reference_id' => $payment->id ?? null,
-            'transaction_id' => $transaction->id ?? null,
+            'transaction_id' => $order->id ?? null,
             'parent_transaction_id' => null
         ];
     }
@@ -456,7 +464,6 @@ class PaypalCheckout extends NonmerchantGateway
         // Output errors
         if (($errors = $refund->errors())) {
             $this->Input->setErrors(['internal' => $errors]);
-
             return;
         }
 
@@ -489,7 +496,7 @@ class PaypalCheckout extends NonmerchantGateway
 
         // Fetch the payment
         $payment = $payments->get(['id' => $reference_id]);
-        $response = $payments->response();
+        $response = $payment->response();
 
         if (empty($response) || !isset($response->status)) {
             $this->Input->setErrors($this->getCommonError('general'));
@@ -507,7 +514,6 @@ class PaypalCheckout extends NonmerchantGateway
         // Output errors
         if (($errors = $void->errors())) {
             $this->Input->setErrors(['internal' => $errors]);
-
             return;
         }
 
