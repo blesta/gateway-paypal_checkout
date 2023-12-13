@@ -200,7 +200,7 @@ class PaypalCheckout extends NonmerchantGateway
             'purchase_units' => [
                 [
                     'description' => $options['description'] ?? '',
-                    'soft_descriptor' => $company->name ?? '',
+                    'soft_descriptor' => substr(preg_replace('/[^a-z1-9\ \-\*\.]/i', '', $company->name ?? ''), 0, 22),
                     'amount' => [
                         'currency_code' => $this->currency,
                         'value' => $amount
