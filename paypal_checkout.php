@@ -169,9 +169,9 @@ class PaypalCheckout extends NonmerchantGateway
     public function buildProcess(array $contact_info, $amount, array $invoice_amounts = null, array $options = null)
     {
         // Force 2-decimal places only
-        $amount = round($amount, 2);
+        $amount = number_format($amount, 2, '.', '');
         if (isset($options['recur']['amount'])) {
-            $options['recur']['amount'] = round($options['recur']['amount'], 2);
+            $options['recur']['amount'] = number_format($options['recur']['amount'], 2, '.', '');
         }
 
         // Remove decimals on unsupported currencies
@@ -216,6 +216,11 @@ class PaypalCheckout extends NonmerchantGateway
                 'cancel_url' => $options['return_url'] ?? null
             ]
         ];
+
+        if (empty($params['purchase_units'][0]['reference_id'])) {
+            unset($params['purchase_units'][0]['reference_id']);
+        }
+
         $order = $orders->create($params);
         $response = $order->response();
 
