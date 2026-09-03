@@ -53,6 +53,11 @@ class PaypalCheckoutApi
     private $token;
 
     /**
+     * @var Psr\Log\LoggerInterface The application logger
+     */
+    private $logger;
+
+    /**
      * Initializes the request parameter
      */
     public function __construct(string $client_id, string $client_secret, string $environment = 'sandbox')
