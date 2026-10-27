@@ -281,10 +281,14 @@ class PaypalCheckout extends NonmerchantGateway
 
         $this->log('validate', json_encode($webhook), 'input', !empty($webhook));
 
+        // The webhook is not signed, so it only names the PayPal object to look up. Everything
+        // recorded below comes from PayPal's API, never from the webhook body
+        $resource_id = rawurlencode(is_string($webhook->resource->id ?? null) ? $webhook->resource->id : '');
+
         // Capture payment
         if ($webhook->event_type == 'CHECKOUT.ORDER.APPROVED') {
             $orders = new PaypalCheckoutOrders($api);
-            $response = $orders->capture(['id' => $webhook->resource->id]);
+            $response = $orders->capture(['id' => $resource_id]);
 
             $this->log('capture', json_encode($response->response()), 'output', empty($response->errors()));
 
@@ -294,20 +298,36 @@ class PaypalCheckout extends NonmerchantGateway
                 return;
             }
 
+            // Fetch the captured order
+            $order_response = $orders->get(['id' => $resource_id]);
+            $order = $order_response->response();
+            $transaction = $order->purchase_units[0] ?? (object) [];
+
+            if (($errors = $order_response->errors())) {
+                $this->Input->setErrors($errors);
+                return;
+            }
+
             return [
-                'client_id' => $webhook->resource->purchase_units[0]->custom_id ?? null,
-                'amount' => $webhook->resource->purchase_units[0]->amount->value ?? null,
-                'currency' => $webhook->resource->purchase_units[0]->amount->currency_code ?? null,
-                'invoices' => $this->unserializeInvoices($webhook->resource->purchase_units[0]->reference_id ?? ''),
+                'client_id' => $transaction->custom_id ?? null,
+                'amount' => $transaction->amount->value ?? null,
+                'currency' => $transaction->amount->currency_code ?? null,
+                'invoices' => $this->unserializeInvoices($transaction->reference_id ?? ''),
                 'status' => 'pending',
                 'reference_id' => null,
-                'transaction_id' => $webhook->resource->id ?? null,
+                'transaction_id' => $order->id ?? null,
                 'parent_transaction_id' => null
             ];
         }
 
-        // Set the payment
-        $payment = $webhook->resource ?? (object) [];
+        // Fetch the payment
+        $payment_response = $payments->get(['id' => $resource_id]);
+        $payment = $payment_response->response() ?? (object) [];
+
+        if (($errors = $payment_response->errors())) {
+            $this->Input->setErrors($errors);
+            return;
+        }
 
         // Fetch the transaction
         $order_response = (object) [];
@@ -320,9 +340,9 @@ class PaypalCheckout extends NonmerchantGateway
             $transaction = $order->purchase_units[0] ?? (object) [];
         }
 
-        $this->log('validate', json_encode($transaction), 'output', !empty($transaction));
+        $this->log('validate', json_encode($transaction), 'output', !empty((array) $transaction));
 
-        if (empty($transaction)) {
+        if (empty((array) $transaction)) {
             $this->Input->setErrors([
                 'transaction' => ['missing' => Language::_('PaypalCheckout.!error.transaction.missing', true)]
             ]);
